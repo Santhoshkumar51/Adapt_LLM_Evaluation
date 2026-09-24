@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # ── In-memory job store ───────────────────────────────────────────────────────
 # Stores status and results for each fine-tuning job by job_id (UUID).
 # In production this would be a Redis store or a database.
-JOB_STORE: Dict[str, Any] = {}
-
+# JOB_STORE: Dict[str, Any] = {}
+from backend.store import JOB_STORE
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -1,32 +1,86 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
 *.egg-info/
 dist/
 build/
 
-# Environment
+# =========================
+# Environment / Secrets
+# =========================
 .env
-.venv/
-venv/
+.env.*
+!.env.example
 
-# Data (raw and processed — too large for git)
+# =========================
+# Data
+# =========================
+# Raw and processed datasets — generated/local data
 data/raw/
 data/processed/
 
-# Model artifacts (too large for git)
+# Uploaded runtime files
+backend/data/uploads/
+
+# =========================
+# Model Artifacts
+# =========================
 checkpoints/
 adapters/
 
-# Outputs (generated, not source)
+# =========================
+# Generated Outputs
+# =========================
 outputs/
 
+# =========================
+# Node / React
+# =========================
+node_modules/
+frontend/node_modules/
+
+# Frontend build output
+frontend/dist/
+frontend/build/
+
+# Vite cache
+frontend/.vite/
+
+# =========================
 # Jupyter
+# =========================
 .ipynb_checkpoints/
 
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
 # OS
+# =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp
+*.bak

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 const ALLOWED = [".jsonl", ".csv"];
-const MAX_MB  = 20;
+const MAX_MB  = 50;
 
 /*
   Drag-and-drop + click-to-browse file upload.

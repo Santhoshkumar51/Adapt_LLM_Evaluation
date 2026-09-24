@@ -1,6 +1,6 @@
 import { useState } from "react";
 import ModelSelector from "../components/ModelSelector";
-import FileUpload    from "../components/FileUpload";
+import FileUpload from "../components/FileUpload";
 import { submitFinetuneJob } from "../api/adapteval";
 
 /*
@@ -9,9 +9,9 @@ import { submitFinetuneJob } from "../api/adapteval";
 */
 export default function HomePage({ onSubmit }) {
   const [modelId, setModelId] = useState("");
-  const [file,    setFile]    = useState(null);
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   const canSubmit = modelId && file && !loading;
 
@@ -48,10 +48,18 @@ export default function HomePage({ onSubmit }) {
         <div className="card">
           <div className="card-label">Training dataset</div>
           <FileUpload value={file} onChange={setFile} />
-          <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Your file should be a <span className="mono">.jsonl</span> with one JSON object per line,
-            each containing <span className="mono">"question"</span> and <span className="mono">"answer"</span> keys.
-            CSV with the same columns also accepted.
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              lineHeight: 1.6,
+            }}
+          >
+            Upload a <span className="mono">.csv</span> or{" "}
+            <span className="mono">.jsonl</span> dataset. AdaptEval
+            automatically detects common question/answer, instruction/output,
+            prompt/response, context, and category column names.
           </div>
         </div>
 
@@ -70,7 +78,7 @@ export default function HomePage({ onSubmit }) {
             lineHeight: 1.8,
             overflow: "auto",
           }}>
-{`{"question": "What is LoRA?", "answer": "LoRA is a parameter-efficient fine-tuning method that trains low-rank adapter matrices instead of updating full model weights."}
+            {`{"question": "What is LoRA?", "answer": "LoRA is a parameter-efficient fine-tuning method that trains low-rank adapter matrices instead of updating full model weights."}
 {"question": "What is QLoRA?", "answer": "QLoRA extends LoRA with 4-bit quantization, enabling fine-tuning of large models on single consumer GPUs."}`}
           </pre>
         </div>

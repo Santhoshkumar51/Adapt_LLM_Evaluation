@@ -20,7 +20,7 @@ from backend.api.schemas import (
     StatusResponse,
     TrainingProgress,
 )
-from backend.main import JOB_STORE
+from backend.store import JOB_STORE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

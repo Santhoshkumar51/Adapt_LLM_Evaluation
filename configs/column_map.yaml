@@ -1,0 +1,46 @@
+question:
+  - question
+  - Question
+  - questions
+  - query
+  - Query
+  - prompt
+  - Prompt
+  - instruction
+  - Instruction
+  - input
+  - Input
+  - question_text
+  - question_texts
+
+answer:
+  - answer
+  - Answer
+  - answers
+  - response
+  - Response
+  - output
+  - Output
+  - completion
+  - Completion
+  - response_text
+  - target
+  - target_text
+
+context:
+  - context
+  - Context
+  - passage
+  - Passage
+  - background
+  - information
+
+category:
+  - category
+  - Category
+  - type
+  - Type
+  - qtype
+  - question_type
+  - topic
+  - domain

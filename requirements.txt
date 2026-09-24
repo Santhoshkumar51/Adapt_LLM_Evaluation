@@ -1,3 +1,4 @@
+# ── ML Core ───────────────────────────────────────────────────────────
 torch>=2.1.0
 transformers>=4.38.0
 peft>=0.9.0
@@ -13,3 +14,13 @@ seaborn>=0.12.0
 tensorboard>=2.14.0
 pyyaml>=6.0
 tqdm>=4.65.0
+safetensors>=0.4.0       # saving adapter as .safetensors
+
+# ── Backend ───────────────────────────────────────────────────────────
+fastapi>=0.111.0         # API framework
+uvicorn>=0.30.0          # ASGI server to run FastAPI
+python-multipart>=0.0.9  # file uploads in FastAPI (REQUIRED for /finetune)
+pydantic>=2.7.0          # request/response schemas
+
+# ── Hugging Face Hub ──────────────────────────────────────────────────
+huggingface_hub>=0.23.0  # model downloading, login, caching

@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024   # 20 MB hard cap on uploaded training data
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024   # 20 MB hard cap on uploaded training data
 ALLOWED_EXTENSIONS  = {".jsonl", ".csv"}
 UPLOAD_DIR          = "data/uploads"
 
 # ── Shared job store (injected from main.py at import time) ──────────────────
 # Imported here to allow background task updates to be visible via /status route.
-from backend.main import JOB_STORE
+from backend.store import JOB_STORE
 
 
 def _validate_file(filename: str, file_size: int) -> None:
