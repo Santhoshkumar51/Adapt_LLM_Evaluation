@@ -1,18 +1,17 @@
 """
-Evaluates both the baseline (untouched) and fine-tuned (LoRA-adapted) model
-on the held-out test split. Computes accuracy, F1-score, and perplexity.
-Saves all metrics and sample predictions to the outputs/ directory.
+Evaluates the baseline and LoRA fine-tuned model on the held-out test split.
+Computes ROUGE-L and perplexity and stores representative sample outputs.
 """
 
 import json
 import logging
 import os
-from typing import Any, Dict, List, Tuple
+import re
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
 from datasets import Dataset
-from sklearn.metrics import accuracy_score, f1_score
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 logger = logging.getLogger(__name__)
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = "outputs/"
 METRICS_FILE = "outputs/eval_metrics.json"
 PREDICTIONS_FILE = "outputs/sample_predictions.jsonl"
+
 MAX_NEW_TOKENS = 128
 NUM_SAMPLE_OUTPUTS = 5
 
@@ -30,19 +30,7 @@ def _generate_response(
     prompt: str,
     max_new_tokens: int = MAX_NEW_TOKENS,
 ) -> str:
-    """
-    Generates a response from the model given an input prompt.
-    Runs in inference mode with no gradient computation.
 
-    Args:
-        model:          Model to generate from (baseline or fine-tuned).
-        tokenizer:      Tokenizer matching the model.
-        prompt:         Input text prompt.
-        max_new_tokens: Maximum number of tokens to generate.
-
-    Returns:
-        Decoded generated text, with prompt stripped from the output.
-    """
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
@@ -54,13 +42,16 @@ def _generate_response(
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            do_sample=False,         # greedy decoding for deterministic eval
+            do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    # Strip the input prompt tokens from generated output
     generated_ids = output_ids[0][inputs["input_ids"].shape[1]:]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    return tokenizer.decode(
+        generated_ids,
+        skip_special_tokens=True
+    ).strip()
 
 
 def _compute_perplexity(
@@ -69,22 +60,14 @@ def _compute_perplexity(
     texts: List[str],
 ) -> float:
     """
-    Computes mean perplexity over a list of texts.
-    Perplexity measures how confidently the model predicts the next token —
-    lower is better; a well-adapted model should score lower than baseline.
-
-    Args:
-        model:     Model to evaluate.
-        tokenizer: Tokenizer matching the model.
-        texts:     List of full instruction-response strings.
-
-    Returns:
-        Mean perplexity across all texts (float).
+    Compute mean perplexity over full instruction-response sequences.
     """
+
     model.eval()
     perplexities = []
 
     for text in texts:
+
         encodings = tokenizer(
             text,
             return_tensors="pt",
@@ -93,31 +76,142 @@ def _compute_perplexity(
         ).to(model.device)
 
         with torch.no_grad():
-            outputs = model(**encodings, labels=encodings["input_ids"])
-            loss = outputs.loss
-            perplexities.append(torch.exp(loss).item())
 
-    return float(np.mean(perplexities))
+            outputs = model(
+                **encodings,
+                labels=encodings["input_ids"]
+            )
+
+            perplexities.append(
+                torch.exp(outputs.loss).item()
+            )
+
+    return (
+        float(np.mean(perplexities))
+        if perplexities
+        else 0.0
+    )
 
 
-def _compute_classification_metrics(
+def _tokenize_for_rouge(text: str) -> List[str]:
+    """
+    Tokenize text into words and punctuation for ROUGE-L.
+    """
+
+    return re.findall(
+        r"\w+|[^\w\s]",
+        text.lower(),
+        flags=re.UNICODE,
+    )
+
+
+def _lcs_length(
+    a: List[str],
+    b: List[str],
+) -> int:
+    """
+    Compute longest common subsequence length.
+    """
+
+    if not a or not b:
+        return 0
+
+    if len(a) < len(b):
+        short = a
+        long_ = b
+    else:
+        short = b
+        long_ = a
+
+    previous = [0] * (len(short) + 1)
+
+    for token in long_:
+
+        current = [0]
+
+        for j, short_token in enumerate(
+            short,
+            start=1
+        ):
+
+            if token == short_token:
+
+                current.append(
+                    previous[j - 1] + 1
+                )
+
+            else:
+
+                current.append(
+                    max(
+                        previous[j],
+                        current[-1]
+                    )
+                )
+
+        previous = current
+
+    return previous[-1]
+
+
+def _rouge_l_f1(
+    prediction: str,
+    reference: str,
+) -> float:
+    """
+    Compute ROUGE-L F1 for one prediction/reference pair.
+    """
+
+    pred_tokens = _tokenize_for_rouge(
+        prediction
+    )
+
+    ref_tokens = _tokenize_for_rouge(
+        reference
+    )
+
+    if not pred_tokens or not ref_tokens:
+        return 0.0
+
+    lcs = _lcs_length(
+        pred_tokens,
+        ref_tokens
+    )
+
+    precision = lcs / len(pred_tokens)
+    recall = lcs / len(ref_tokens)
+
+    if precision + recall == 0:
+        return 0.0
+
+    return (
+        2 * precision * recall
+        / (precision + recall)
+    )
+
+
+def _compute_rouge_l(
     predictions: List[str],
     references: List[str],
-) -> Dict[str, float]:
+) -> float:
     """
-    Computes accuracy and macro F1-score for classification-style tasks
-    where the model generates a short category label as output.
-
-    Args:
-        predictions: List of model-generated output strings.
-        references:  List of ground-truth reference strings.
-
-    Returns:
-        Dict containing accuracy and f1 scores.
+    Compute mean ROUGE-L F1 across the test set.
     """
-    accuracy = accuracy_score(references, predictions)
-    f1 = f1_score(references, predictions, average="macro", zero_division=0)
-    return {"accuracy": round(accuracy, 4), "f1": round(f1, 4)}
+
+    scores = [
+        _rouge_l_f1(
+            prediction,
+            reference
+        )
+        for prediction, reference
+        in zip(predictions, references)
+    ]
+
+    return (
+        float(np.mean(scores))
+        if scores
+        else 0.0
+    )
 
 
 def _collect_sample_outputs(
@@ -128,37 +222,56 @@ def _collect_sample_outputs(
     n: int = NUM_SAMPLE_OUTPUTS,
 ) -> List[Dict[str, str]]:
     """
-    Generates n side-by-side sample predictions from both models
-    on the same inputs for qualitative dashboard comparison.
-
-    Args:
-        baseline_model:  Untouched base model.
-        finetuned_model: LoRA fine-tuned model.
-        tokenizer:       Shared tokenizer.
-        test_texts:      Full instruction-response strings from test set.
-        n:               Number of samples to collect.
-
-    Returns:
-        List of dicts with keys: input, baseline_output, finetuned_output, reference.
+    Generate representative side-by-side outputs.
     """
+
     samples = []
+
     for text in test_texts[:n]:
-        # Extract just the instruction portion as the input prompt
+
         delimiter = "### Response:"
+
         if delimiter in text:
-            prompt = text[:text.index(delimiter) + len(delimiter)]
-            reference = text[text.index(delimiter) + len(delimiter):].strip()
+
+            split_at = text.index(
+                delimiter
+            )
+
+            prompt = (
+                text[
+                    :split_at
+                    + len(delimiter)
+                ]
+            )
+
+            reference = (
+                text[
+                    split_at
+                    + len(delimiter):
+                ].strip()
+            )
+
         else:
+
             prompt = text
             reference = ""
 
-        baseline_out = _generate_response(baseline_model, tokenizer, prompt)
-        finetuned_out = _generate_response(finetuned_model, tokenizer, prompt)
+        baseline_output = _generate_response(
+            baseline_model,
+            tokenizer,
+            prompt,
+        )
+
+        finetuned_output = _generate_response(
+            finetuned_model,
+            tokenizer,
+            prompt,
+        )
 
         samples.append({
             "input": prompt,
-            "baseline_output": baseline_out,
-            "finetuned_output": finetuned_out,
+            "baseline_output": baseline_output,
+            "finetuned_output": finetuned_output,
             "reference": reference,
         })
 
@@ -172,87 +285,202 @@ def run_evaluation(
     test_dataset: Dataset,
 ) -> Dict[str, Any]:
     """
-    Runs full evaluation of baseline vs fine-tuned model on the test split.
-    Computes accuracy, F1, and perplexity for both models.
-    Saves metrics to eval_metrics.json and sample outputs to sample_predictions.jsonl.
+    Evaluate baseline vs fine-tuned models using ROUGE-L and perplexity.
 
-    Args:
-        baseline_model:  Untouched base model.
-        finetuned_model: Fine-tuned PEFT model.
-        tokenizer:       Shared tokenizer.
-        test_dataset:    Tokenized test split.
+    Perplexity is computed on the full formatted
+    instruction-response sequences.
 
-    Returns:
-        Dict containing all computed metrics for both models.
+    ROUGE-L is computed between generated responses
+    and reference responses.
     """
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    test_texts = test_dataset["text"] if "text" in test_dataset.column_names else []
+    os.makedirs(
+        OUTPUT_DIR,
+        exist_ok=True
+    )
 
-    logger.info("Generating predictions for baseline model...")
+    test_texts = (
+        test_dataset["text"]
+        if "text" in test_dataset.column_names
+        else []
+    )
+
+    if not test_texts:
+        raise ValueError(
+            "The test dataset does not contain "
+            "any evaluation texts."
+        )
+
+    prompts = []
+    references = []
+
+    for text in test_texts:
+
+        delimiter = "### Response:"
+
+        if delimiter in text:
+
+            split_at = text.index(
+                delimiter
+            )
+
+            prompts.append(
+                text[
+                    :split_at
+                    + len(delimiter)
+                ]
+            )
+
+            references.append(
+                text[
+                    split_at
+                    + len(delimiter):
+                ].strip()
+            )
+
+        else:
+
+            prompts.append(text)
+            references.append("")
+
+    logger.info(
+        "Generating baseline responses..."
+    )
+
     baseline_preds = [
-        _generate_response(baseline_model, tokenizer, text)
-        for text in test_texts
+        _generate_response(
+            baseline_model,
+            tokenizer,
+            prompt
+        )
+        for prompt in prompts
     ]
 
-    logger.info("Generating predictions for fine-tuned model...")
+    logger.info(
+        "Generating fine-tuned responses..."
+    )
+
     finetuned_preds = [
-        _generate_response(finetuned_model, tokenizer, text)
-        for text in test_texts
+        _generate_response(
+            finetuned_model,
+            tokenizer,
+            prompt
+        )
+        for prompt in prompts
     ]
 
-    references = [
-        text[text.index("### Response:") + len("### Response:"):].strip()
-        if "### Response:" in text else ""
-        for text in test_texts
-    ]
+    logger.info(
+        "Computing ROUGE-L..."
+    )
 
-    logger.info("Computing perplexity...")
-    baseline_perplexity = _compute_perplexity(baseline_model, tokenizer, test_texts)
-    finetuned_perplexity = _compute_perplexity(finetuned_model, tokenizer, test_texts)
+    baseline_rouge_l = _compute_rouge_l(
+        baseline_preds,
+        references
+    )
 
-    logger.info("Computing classification metrics...")
-    baseline_cls = _compute_classification_metrics(baseline_preds, references)
-    finetuned_cls = _compute_classification_metrics(finetuned_preds, references)
+    finetuned_rouge_l = _compute_rouge_l(
+        finetuned_preds,
+        references
+    )
+
+    logger.info(
+        "Computing perplexity..."
+    )
+
+    baseline_perplexity = _compute_perplexity(
+        baseline_model,
+        tokenizer,
+        test_texts
+    )
+
+    finetuned_perplexity = _compute_perplexity(
+        finetuned_model,
+        tokenizer,
+        test_texts
+    )
 
     metrics = {
+
         "baseline": {
-            "accuracy": baseline_cls["accuracy"],
-            "f1": baseline_cls["f1"],
-            "perplexity": round(baseline_perplexity, 4),
+            "rouge_l": round(
+                baseline_rouge_l,
+                4
+            ),
+            "perplexity": round(
+                baseline_perplexity,
+                4
+            ),
         },
+
         "finetuned": {
-            "accuracy": finetuned_cls["accuracy"],
-            "f1": finetuned_cls["f1"],
-            "perplexity": round(finetuned_perplexity, 4),
+            "rouge_l": round(
+                finetuned_rouge_l,
+                4
+            ),
+            "perplexity": round(
+                finetuned_perplexity,
+                4
+            ),
         },
+
         "improvement": {
-            "accuracy_delta": round(finetuned_cls["accuracy"] - baseline_cls["accuracy"], 4),
-            "f1_delta": round(finetuned_cls["f1"] - baseline_cls["f1"], 4),
-            "perplexity_delta": round(baseline_perplexity - finetuned_perplexity, 4),
+            "rouge_l_delta": round(
+                finetuned_rouge_l
+                - baseline_rouge_l,
+                4
+            ),
+            "perplexity_delta": round(
+                baseline_perplexity
+                - finetuned_perplexity,
+                4
+            ),
         },
     }
 
-    with open(METRICS_FILE, "w") as f:
-        json.dump(metrics, f, indent=2)
-    logger.info("Metrics saved to %s", METRICS_FILE)
+    with open(
+        METRICS_FILE,
+        "w",
+        encoding="utf-8"
+    ) as f:
 
-    logger.info("Collecting sample outputs...")
-    samples = _collect_sample_outputs(
-        baseline_model, finetuned_model, tokenizer, test_texts
-    )
-
-    with open(PREDICTIONS_FILE, "w") as f:
-        for sample in samples:
-            f.write(json.dumps(sample) + "\n")
-    logger.info("Sample predictions saved to %s", PREDICTIONS_FILE)
+        json.dump(
+            metrics,
+            f,
+            indent=2
+        )
 
     logger.info(
-        "Evaluation complete.\n"
-        "Baseline   — Accuracy: %.4f | F1: %.4f | Perplexity: %.4f\n"
-        "Fine-tuned — Accuracy: %.4f | F1: %.4f | Perplexity: %.4f",
-        baseline_cls["accuracy"], baseline_cls["f1"], baseline_perplexity,
-        finetuned_cls["accuracy"], finetuned_cls["f1"], finetuned_perplexity,
+        "Collecting sample outputs..."
+    )
+
+    samples = _collect_sample_outputs(
+        baseline_model,
+        finetuned_model,
+        tokenizer,
+        test_texts,
+    )
+
+    with open(
+        PREDICTIONS_FILE,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        for sample in samples:
+
+            f.write(
+                json.dumps(sample)
+                + "\n"
+            )
+
+    logger.info(
+        "Evaluation complete | "
+        "baseline ROUGE-L %.4f, perplexity %.4f | "
+        "fine-tuned ROUGE-L %.4f, perplexity %.4f",
+        baseline_rouge_l,
+        baseline_perplexity,
+        finetuned_rouge_l,
+        finetuned_perplexity,
     )
 
     return metrics

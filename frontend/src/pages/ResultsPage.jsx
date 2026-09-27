@@ -1,10 +1,12 @@
 import MetricsCard from "../components/MetricsCard";
 import SampleComparison from "../components/SampleComparison";
-import { adapterDownloadUrl } from "../api/adapteval";
+import {
+  adapterDownloadUrl,
+} from "../api/adapteval";
+
 
 /*
-  Screen 3 — full results dashboard.
-  KPI comparison, sample outputs, adapter download.
+  Final evaluation dashboard for AdaptEval.
 */
 
 export default function ResultsPage({
@@ -13,6 +15,7 @@ export default function ResultsPage({
   jobId,
   onReset,
 }) {
+
   const {
     baseline,
     finetuned,
@@ -21,114 +24,132 @@ export default function ResultsPage({
     adapter,
   } = results;
 
-  return (
-    <main className="page">
 
-      {/* ── Header ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginBottom: 36,
-        }}
-      >
+  return (
+
+    <main className="page results-page">
+
+      {/* Header */}
+
+      <div className="results-header">
+
         <div>
+
+          <div className="eyebrow">
+            Evaluation complete
+          </div>
+
           <h1 className="page-title">
             Results
           </h1>
 
-          <p
-            className="page-sub"
-            style={{ marginBottom: 0 }}
-          >
-            {modelId?.split("/").pop()} ·{" "}
+          <p className="page-sub results-sub">
+
+            {modelId?.split("/").pop()}
+
+            {" · "}
+
             <span
               className="mono"
               style={{ fontSize: 12 }}
             >
               {jobId?.slice(0, 8)}
             </span>
+
           </p>
+
         </div>
 
-        {/* Download adapter */}
+
         <a
+          className="download-adapter"
           href={adapterDownloadUrl(jobId)}
           download
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "9px 16px",
-            borderRadius: "var(--radius-sm)",
-            background: "var(--accent-dim)",
-            border: "1px solid var(--border-accent)",
-            color: "var(--accent)",
-            textDecoration: "none",
-            fontSize: 13,
-            fontWeight: 500,
-            transition: "background 0.15s",
-          }}
         >
-          ↓ Download adapter
+          <span>↓</span>
+          Download LoRA adapter
         </a>
+
       </div>
 
-      {/* ── Summary banner ── */}
-      <div
-        style={{
-          background: "rgba(0,212,170,0.06)",
-          border: "1px solid var(--border-accent)",
-          borderRadius: "var(--radius-md)",
-          padding: "16px 20px",
-          marginBottom: 24,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 20 }}>
+
+      {/* Summary */}
+
+      <div className="result-hero">
+
+        <div className="result-hero-icon">
           ✓
-        </span>
+        </div>
+
 
         <div>
-          <div
-            style={{
-              fontWeight: 600,
-              fontSize: 14,
-              color: "var(--accent)",
-              marginBottom: 2,
-            }}
-          >
-            Fine-tuning improved accuracy by{" "}
-            {(improvement.accuracy_delta * 100).toFixed(1)}%
+
+          <div className="result-hero-title">
+            Domain adaptation run completed
           </div>
 
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
-            }}
-          >
-            Adapter size:{" "}
-            {adapter.size_mb.toFixed(1)} MB ·{" "}
-            {adapter.trained_params_pct.toFixed(3)}%
-            {" "}of parameters trained ·{" "}
-            {adapter.training_time_mins.toFixed(1)}
-            {" "}min training time
+          <div className="result-hero-text">
+            The fine-tuned model is compared
+            with the original base model on
+            the same held-out evaluation set.
           </div>
+
         </div>
+
+
+        <div className="result-hero-meta">
+
+          <span>
+            Held-out evaluation
+          </span>
+
+          <span>
+            {adapter.trained_params_pct.toFixed(3)}
+            % trainable
+          </span>
+
+        </div>
+
       </div>
 
-      {/* ── KPI metrics ── */}
+
+      {/* Quantitative evaluation */}
+
       <div
-        className="card"
-        style={{ marginBottom: 20 }}
+        className="card results-card"
       >
-        <div className="card-label">
-          Performance comparison
+
+        <div className="card-heading-row">
+
+          <div>
+
+            <div className="card-label">
+              Quantitative evaluation
+            </div>
+
+            <div className="card-heading">
+              Baseline vs fine-tuned model
+            </div>
+
+          </div>
+
+
+          <div className="metric-legend">
+
+            <span>
+              <i className="legend-dot baseline-dot" />
+              Baseline
+            </span>
+
+            <span>
+              <i className="legend-dot tuned-dot" />
+              Fine-tuned
+            </span>
+
+          </div>
+
         </div>
+
 
         <MetricsCard
           baseline={baseline}
@@ -136,47 +157,89 @@ export default function ResultsPage({
           improvement={improvement}
           adapter={adapter}
         />
+
       </div>
 
-      {/* ── Sample outputs ── */}
+
+      {/* Qualitative evaluation */}
+
       <div
-        className="card"
-        style={{ marginBottom: 20 }}
+        className="card results-card"
       >
+
         <div className="card-label">
+          Qualitative evaluation
+        </div>
+
+        <div className="card-heading">
           Sample output comparison
         </div>
 
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-muted)",
-            marginBottom: 16,
-          }}
-        >
-          Same input, different models — same test set
-          your evaluation metrics are computed on.
+        <div className="card-description">
+
+          Representative responses from
+          the same held-out test set used
+          for the quantitative evaluation.
+          Five samples are shown when available.
+
         </div>
+
 
         <SampleComparison
           samples={samples}
         />
+
       </div>
 
-      {/* ── Run another ── */}
-      <div
-        style={{
-          textAlign: "center",
-          paddingTop: 16,
-        }}
-      >
+
+      {/* Adapter information */}
+
+      <div className="adapter-summary">
+
+        <div>
+
+          <div className="card-label">
+            Reusable artifact
+          </div>
+
+          <div className="adapter-summary-title">
+            LoRA adapter saved separately
+          </div>
+
+          <div className="adapter-summary-text">
+
+            The trained adapter remains separate
+            from the original Mistral-7B base model
+            and can be retained as a compact
+            reusable artifact.
+
+          </div>
+
+        </div>
+
+
+        <a
+          className="btn btn-outline"
+          href={adapterDownloadUrl(jobId)}
+          download
+        >
+          Download adapter
+        </a>
+
+      </div>
+
+
+      {/* Reset */}
+
+      <div className="results-footer-action">
+
         <button
           className="btn btn-outline"
           onClick={onReset}
-          style={{ padding: "10px 28px" }}
         >
           Run another fine-tune
         </button>
+
       </div>
 
     </main>
