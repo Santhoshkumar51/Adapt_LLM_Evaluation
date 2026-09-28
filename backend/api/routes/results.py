@@ -1,7 +1,9 @@
 """
-GET /api/results/{job_id}/status  — poll training progress
-GET /api/results/{job_id}         — fetch full evaluation results
-GET /api/results/{job_id}/download — stream the adapter .safetensors file
+Result and status endpoints for AdaptEval jobs.
+
+GET /api/results/{job_id}/status
+GET /api/results/{job_id}
+GET /api/results/{job_id}/download
 """
 
 import logging
@@ -12,8 +14,10 @@ from fastapi.responses import FileResponse
 
 from backend.api.schemas import (
     AdapterInfo,
+    DatasetStats,
     ImprovementMetrics,
     JobStatus,
+    LossPoint,
     ModelMetrics,
     ResultsResponse,
     SamplePrediction,
@@ -22,31 +26,28 @@ from backend.api.schemas import (
 )
 from backend.store import JOB_STORE
 
+
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
-ADAPTER_BASE_DIR = "adapters/"
+ADAPTER_BASE_DIR = "adapters"
 
 
 def _get_job_or_404(job_id: str) -> dict:
-    """
-    Fetches job state from JOB_STORE or raises HTTP 404.
+    """Return a job or raise HTTP 404."""
 
-    Args:
-        job_id: UUID string for the fine-tuning job.
-
-    Returns:
-        Job state dict from JOB_STORE.
-
-    Raises:
-        HTTPException 404: If job_id is not found in JOB_STORE.
-    """
     job = JOB_STORE.get(job_id)
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found. Check the job_id returned at submission.",
+            detail=(
+                f"Job '{job_id}' not found. "
+                "Check the job_id returned at submission."
+            ),
         )
+
     return job
 
 
@@ -55,18 +56,19 @@ def _get_job_or_404(job_id: str) -> dict:
     response_model=StatusResponse,
     summary="Poll fine-tuning job status",
 )
-async def get_job_status(job_id: str) -> StatusResponse:
-    """
-    Returns the current lifecycle state and training progress for a job.
-    Frontend polls this every 10–15 seconds to update a progress indicator.
+async def get_job_status(
+    job_id: str,
+) -> StatusResponse:
+    """Return the current lifecycle state and progress."""
 
-    Possible statuses: queued → preparing → training → evaluating → complete | failed
-    """
     job = _get_job_or_404(job_id)
 
     progress = None
-    if job["progress"]:
-        progress = TrainingProgress(**job["progress"])
+
+    if job.get("progress"):
+        progress = TrainingProgress(
+            **job["progress"]
+        )
 
     return StatusResponse(
         job_id=job_id,
@@ -81,49 +83,102 @@ async def get_job_status(job_id: str) -> StatusResponse:
     response_model=ResultsResponse,
     summary="Fetch full evaluation results",
 )
-async def get_results(job_id: str) -> ResultsResponse:
-    """
-    Returns the full evaluation dashboard payload for a completed job.
-    Only available when job status is COMPLETE — returns HTTP 409 otherwise.
-    Powers the entire AdaptEval results dashboard (KPIs + sample outputs).
-    """
+async def get_results(
+    job_id: str,
+) -> ResultsResponse:
+    """Return the complete dashboard payload."""
+
     job = _get_job_or_404(job_id)
 
     if job["status"] != JobStatus.COMPLETE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Job '{job_id}' is not complete yet. Current status: {job['status']}.",
+            detail=(
+                f"Job '{job_id}' is not complete yet. "
+                f"Current status: {job['status']}."
+            ),
         )
 
-    results = job["results"]
+    results = job.get("results")
+
+    if not results:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation results are not available.",
+        )
 
     return ResultsResponse(
         job_id=job_id,
         model_id=job["model_id"],
-        baseline=ModelMetrics(**results["baseline"]),
-        finetuned=ModelMetrics(**results["finetuned"]),
-        improvement=ImprovementMetrics(**results["improvement"]),
-        samples=[SamplePrediction(**s) for s in results["samples"]],
-        adapter=AdapterInfo(**results["adapter"]),
+
+        baseline=ModelMetrics(
+            **results["baseline"]
+        ),
+
+        finetuned=ModelMetrics(
+            **results["finetuned"]
+        ),
+
+        improvement=ImprovementMetrics(
+            **results["improvement"]
+        ),
+
+        samples=[
+            SamplePrediction(**sample)
+            for sample in results.get(
+                "samples",
+                [],
+            )
+        ],
+
+        adapter=AdapterInfo(
+            **results["adapter"]
+        ),
+
+        loss_history=[
+            LossPoint(**point)
+            for point in results.get(
+                "loss_history",
+                [],
+            )
+        ],
+
+        dataset_stats=DatasetStats(
+            **results.get(
+                "dataset_stats",
+                {
+                    "train": 0,
+                    "val": 0,
+                    "test": 0,
+                    "total": 0,
+                },
+            )
+        ),
     )
 
 
 @router.get(
     "/{job_id}/download",
-    summary="Download adapter weights file",
+    summary="Download LoRA adapter weights",
 )
-async def download_adapter(job_id: str) -> FileResponse:
+async def download_adapter(
+    job_id: str,
+) -> FileResponse:
     """
-    Streams the merged adapter .safetensors file to the client.
-    Only available when job status is COMPLETE.
-    This is the primary take-away artifact of the fine-tuning run.
+    Download the separately saved LoRA adapter.
+
+    The adapter is not a merged standalone base model.
     """
+
     job = _get_job_or_404(job_id)
 
     if job["status"] != JobStatus.COMPLETE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Adapter not ready. Job status: {job['status']}.",
+            detail=(
+                f"Adapter not ready. "
+                f"Job status: {job['status']}."
+            ),
         )
 
     adapter_path = os.path.join(
@@ -135,13 +190,23 @@ async def download_adapter(job_id: str) -> FileResponse:
     if not os.path.exists(adapter_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Adapter file not found on disk. The job may have failed during merge.",
+            detail=(
+                "Adapter file not found on disk. "
+                "The adapter may not have been saved."
+            ),
         )
 
-    logger.info("Serving adapter file for job_id=%s from %s", job_id, adapter_path)
+    logger.info(
+        "Serving adapter for job_id=%s from %s",
+        job_id,
+        adapter_path,
+    )
 
     return FileResponse(
         path=adapter_path,
-        filename=f"adapteval_adapter_{job_id[:8]}.safetensors",
+        filename=(
+            f"adapteval_adapter_"
+            f"{job_id[:8]}.safetensors"
+        ),
         media_type="application/octet-stream",
     )

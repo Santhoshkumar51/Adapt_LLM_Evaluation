@@ -1,72 +1,79 @@
 # AdaptEval
 
-An automated LoRA/QLoRA fine-tuning and evaluation framework for
-domain-specific Large Language Model adaptation.
+AdaptEval is a web-based framework for parameter-efficient
+fine-tuning and evaluation of large language models using
+LoRA and QLoRA.
 
-## What it does
+The system provides a unified workflow for:
 
-- User selects a base LLM and uploads domain-specific training data
-- System fine-tunes the model using LoRA — no manual ML setup required
-- Returns a dashboard comparing baseline vs fine-tuned performance
-- Produces a downloadable adapter weights file as the final artifact
+- Base-model selection
+- Dataset upload
+- Dataset preprocessing
+- LoRA/QLoRA fine-tuning
+- Baseline vs fine-tuned evaluation
+- ROUGE-L evaluation
+- Perplexity evaluation
+- Training-loss visualization
+- Qualitative response comparison
+- LoRA adapter generation
+- Adapter download
 
-## Project structure
+---
 
-lora-domain-finetune/
-├── configs/ # LoRA and training hyperparameters
-├── data/ # Raw data, processed splits, preparation script
-├── src/ # Core pipeline modules
-├── adapters/ # Saved adapter weights after training
-├── checkpoints/ # Training checkpoints per epoch
-├── outputs/ # Evaluation metrics and sample predictions
-├── notebooks/ # Exploratory evaluation notebook
-└── scripts/ # Shell scripts to run training and inference
+## Supported Models
 
+AdaptEval supports three base language models:
 
-## Setup
+| Model | Parameters | Hugging Face ID |
+|---|---:|---|
+| Mistral 7B | 7B | `mistralai/Mistral-7B-v0.1` |
+| Llama 3 8B | 8B | `meta-llama/Meta-Llama-3-8B` |
+| Qwen 2 7B | 7B | `Qwen/Qwen2-7B` |
 
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+The experimental results reported in the accompanying paper
+use **Mistral 7B**.
 
-## Run
+Llama 3 8B requires the appropriate Hugging Face access and
+authentication because its repository is gated.
 
-```bash
-# Prepare data, fine-tune, and evaluate in one command
-bash scripts/run_training.sh
+---
 
-# Run inference on the fine-tuned model
-bash scripts/run_inference.sh "Your input prompt here"
-```
+## Project Structure
 
-## Output
-
-| File | Description |
-|---|---|
-| `outputs/eval_metrics.json` | Accuracy, F1, perplexity for baseline and fine-tuned |
-| `outputs/sample_predictions.jsonl` | Side-by-side sample outputs from both models |
-| `adapters/domain_adapter_v1/` | Merged fine-tuned model weights |
-
-## Hardware
-
-Fine-tuning completes in 15–45 minutes on a T4 GPU (Google Colab)
-for datasets up to 5,000 examples using 4-bit QLoRA.
-
-On the UI — separate repo, start after backend is solid
-
-Since this is already a sizable backend, I'd recommend the UI lives as a separate directory alongside this one rather than inside it:
-
-adapteval/
-├── backend/        ← everything above (lora-domain-finetune/)
-└── frontend/       ← React app
-
-The frontend needs just one backend API contract to start building against — a single FastAPI app with these endpoints:
-
-Endpoint	Method	What it does
-/models	GET	Returns list of supported base models
-/finetune	POST	Accepts model name + uploaded .jsonl file, kicks off training
-/status/{job_id}	GET	Returns training progress (epoch, loss, ETA)
-/results/{job_id}	GET	Returns eval_metrics.json + sample_predictions.jsonl
-/download/{job_id}	GET	Streams the adapter .safetensors file
+```text
+Adapt_LLM_Evaluation/
+│
+├── backend/
+│   ├── api/
+│   │   ├── routes/
+│   │   └── schemas.py
+│   ├── main.py
+│   ├── pipeline.py
+│   └── store.py
+│
+├── configs/
+│   ├── column_map.yaml
+│   ├── lora_config.yaml
+│   └── training_config.yaml
+│
+├── data/
+│   └── prepare_dataset.py
+│
+├── frontend/
+│   └── src/
+│
+├── src/
+│   ├── evaluate.py
+│   ├── inject_lora.py
+│   ├── load_base_model.py
+│   ├── merge_adapter.py
+│   ├── tokenize_dataset.py
+│   └── train.py
+│
+├── scripts/
+│   ├── run_inference.sh
+│   └── run_training.sh
+│
+├── adapters/
+├── checkpoints/
+└── outputs/
