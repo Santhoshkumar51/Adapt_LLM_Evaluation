@@ -84,3 +84,6 @@ Thumbs.db
 *.tmp
 *.temp
 *.bak
+
+# Runtime uploaded datasets
+data/uploads/
