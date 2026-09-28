@@ -1,165 +1,114 @@
 """
 Pydantic schemas for all AdaptEval API request and response payloads.
-Defines the contract between the React frontend and FastAPI backend.
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
 class SupportedModel(str, Enum):
-    """Base models supported by AdaptEval."""
     MISTRAL_7B = "mistralai/Mistral-7B-v0.1"
-    LLAMA3_8B = "meta-llama/Meta-Llama-3-8B"
-    QWEN2_7B = "Qwen/Qwen2-7B"
+    QWEN2_7B   = "Qwen/Qwen2-7B"
+    TINYLLAMA  = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 
 class ModelInfo(BaseModel):
-    """Metadata for a single supported base model."""
-    model_id: str = Field(..., description="Hugging Face model ID")
-    display_name: str = Field(..., description="Human-readable model name for UI dropdown")
-    parameters: str = Field(..., description="Approximate parameter count e.g. '7B'")
-    description: str = Field(..., description="One-line model description")
+    model_id:     str = Field(..., description="Hugging Face model ID")
+    display_name: str = Field(..., description="Human-readable name for UI dropdown")
+    parameters:   str = Field(..., description="Approximate parameter count")
+    description:  str = Field(..., description="One-line model description")
 
 
 class ModelsResponse(BaseModel):
-    """Response schema for GET /api/models."""
     models: List[ModelInfo]
 
 
 class JobStatus(str, Enum):
-    """Lifecycle states of a fine-tuning job."""
-    QUEUED = "queued"
-    PREPARING = "preparing"
-    TRAINING = "training"
+    QUEUED     = "queued"
+    PREPARING  = "preparing"
+    TRAINING   = "training"
     EVALUATING = "evaluating"
-    COMPLETE = "complete"
-    FAILED = "failed"
+    COMPLETE   = "complete"
+    FAILED     = "failed"
 
 
 class FinetuneRequest(BaseModel):
-    """Request body metadata for a fine-tuning job."""
-    model_id: SupportedModel = Field(
-        ...,
-        description="Hugging Face model ID selected by the user."
-    )
+    model_id: SupportedModel = Field(..., description="Selected base model ID")
 
 
 class FinetuneJobResponse(BaseModel):
-    """Initial response returned when a fine-tuning job is accepted."""
-    job_id: str = Field(..., description="UUID identifying this fine-tuning run")
-    status: JobStatus = Field(..., description="Initial job status")
-    message: str = Field(..., description="Human-readable status message")
+    job_id:  str       = Field(..., description="UUID for this fine-tuning run")
+    status:  JobStatus = Field(..., description="Initial job status")
+    message: str       = Field(..., description="Human-readable status message")
 
 
 class TrainingProgress(BaseModel):
-    """Training loop progress snapshot."""
-    current_epoch: int = Field(..., description="Current training epoch")
-    total_epochs: int = Field(..., description="Total training epochs configured")
-    train_loss: float = Field(..., description="Latest training loss value")
-    eval_loss: float = Field(..., description="Latest validation loss value")
-    elapsed_mins: float = Field(..., description="Elapsed training time in minutes")
+    current_epoch: int   = Field(..., description="Current epoch")
+    total_epochs:  int   = Field(..., description="Total epochs configured")
+    train_loss:    float = Field(..., description="Latest training loss")
+    eval_loss:     float = Field(..., description="Latest validation loss")
+    elapsed_mins:  float = Field(..., description="Elapsed time in minutes")
 
 
 class StatusResponse(BaseModel):
-    """Response schema for GET /api/results/{job_id}/status."""
-    job_id: str = Field(..., description="Job UUID")
-    status: JobStatus = Field(..., description="Current job lifecycle state")
-    progress: Optional[TrainingProgress] = Field(
-        None,
-        description="Training progress if available"
-    )
-    error: Optional[str] = Field(
-        None,
-        description="Error message if status is FAILED"
-    )
+    job_id:   str                       = Field(..., description="Job UUID")
+    status:   JobStatus                 = Field(..., description="Current lifecycle state")
+    progress: Optional[TrainingProgress] = Field(None, description="Training progress")
+    error:    Optional[str]             = Field(None, description="Error message if failed")
 
 
 class ModelMetrics(BaseModel):
-    """Evaluation metrics for one model."""
-    rouge_l: float = Field(
-        0.0,
-        description="ROUGE-L F1 score on the held-out test set"
-    )
-    perplexity: float = Field(
-        ...,
-        description="Mean perplexity on the held-out test set"
-    )
+    rouge_l:    float = Field(0.0, description="ROUGE-L F1 score on held-out test set")
+    perplexity: float = Field(0.0, description="Mean perplexity on held-out test set")
 
 
 class ImprovementMetrics(BaseModel):
-    """Metric changes between fine-tuned and baseline models."""
-    rouge_l_delta: float = Field(
-        0.0,
-        description="ROUGE-L change (fine-tuned - baseline)"
-    )
-    perplexity_delta: float = Field(
-        ...,
-        description="Perplexity reduction (baseline - fine-tuned)"
-    )
+    rouge_l_delta:    float = Field(0.0, description="ROUGE-L change (fine-tuned - baseline)")
+    perplexity_delta: float = Field(0.0, description="Perplexity reduction (baseline - fine-tuned)")
 
 
 class SamplePrediction(BaseModel):
-    """A single side-by-side sample output comparison."""
-    input: str = Field(
-        ...,
-        description="Input prompt shown to both models"
-    )
-    baseline_output: str = Field(
-        ...,
-        description="Response generated by baseline model"
-    )
-    finetuned_output: str = Field(
-        ...,
-        description="Response generated by fine-tuned model"
-    )
-    reference: str = Field(
-        ...,
-        description="Reference response"
-    )
+    input:            str = Field(..., description="Input prompt")
+    baseline_output:  str = Field(..., description="Baseline model response")
+    finetuned_output: str = Field(..., description="Fine-tuned model response")
+    reference:        str = Field(..., description="Ground-truth reference")
 
 
 class AdapterInfo(BaseModel):
-    """Metadata about the saved LoRA adapter artifact."""
-    size_mb: float = Field(
-        ...,
-        description="Adapter artifact size in megabytes"
-    )
-    trained_params_pct: float = Field(
-        ...,
-        description="Percentage of total model parameters trained"
-    )
-    training_time_mins: float = Field(
-        ...,
-        description="Total fine-tuning time in minutes"
-    )
+    size_mb:             float = Field(..., description="Adapter size in MB")
+    trained_params_pct:  float = Field(..., description="% of params trained")
+    training_time_mins:  float = Field(..., description="Training time in minutes")
+
+
+# ── NEW: loss curve data point ────────────────────────────────────────────────
+class LossPoint(BaseModel):
+    """One epoch's train and eval loss — powers the loss curve chart."""
+    epoch:      int   = Field(..., description="Epoch number")
+    train_loss: float = Field(..., description="Training loss at this epoch")
+    eval_loss:  float = Field(..., description="Validation loss at this epoch")
+
+
+# ── NEW: dataset split sizes ──────────────────────────────────────────────────
+class DatasetStats(BaseModel):
+    """Row counts for each dataset split — shown in the dashboard stats panel."""
+    train: int = Field(..., description="Training examples")
+    val:   int = Field(..., description="Validation examples")
+    test:  int = Field(..., description="Test examples")
+    total: int = Field(..., description="Total examples in uploaded file")
 
 
 class ResultsResponse(BaseModel):
     """Full evaluation results returned to the dashboard."""
-    job_id: str = Field(..., description="Job UUID")
-    model_id: str = Field(
-        ...,
-        description="Base model used for this run"
-    )
-    baseline: ModelMetrics = Field(
-        ...,
-        description="Baseline model evaluation metrics"
-    )
-    finetuned: ModelMetrics = Field(
-        ...,
-        description="Fine-tuned model evaluation metrics"
-    )
-    improvement: ImprovementMetrics = Field(
-        ...,
-        description="Metric changes"
-    )
-    samples: List[SamplePrediction] = Field(
-        ...,
-        description="Representative sample comparisons"
-    )
-    adapter: AdapterInfo = Field(
-        ...,
-        description="LoRA adapter metadata"
+    job_id:       str               = Field(..., description="Job UUID")
+    model_id:     str               = Field(..., description="Base model used")
+    baseline:     ModelMetrics      = Field(..., description="Baseline metrics")
+    finetuned:    ModelMetrics      = Field(..., description="Fine-tuned metrics")
+    improvement:  ImprovementMetrics = Field(..., description="Delta metrics")
+    samples:      List[SamplePrediction] = Field(..., description="Sample comparisons")
+    adapter:      AdapterInfo       = Field(..., description="Adapter metadata")
+    loss_history: List[LossPoint]   = Field(default=[], description="Per-epoch loss curve data")
+    dataset_stats: DatasetStats     = Field(
+        default=DatasetStats(train=0, val=0, test=0, total=0),
+        description="Dataset split sizes",
     )
