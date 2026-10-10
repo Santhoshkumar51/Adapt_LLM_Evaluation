@@ -87,3 +87,6 @@ Thumbs.db
 
 # Runtime uploaded datasets
 data/uploads/
+
+.venv/
+venv/
